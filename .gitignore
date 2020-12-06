@@ -1,0 +1,4 @@
+.DS_Store
+.idea/
+log/nu_api.log
+log/__main__.log
