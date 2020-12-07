@@ -142,6 +142,7 @@ if __name__ == "__main__":
     my_vms = {"10.1.1.235": {}, "10.2.1.121": {}}
 
     # Get all vports directly from enterprise
+    print(20 * '=' + 'Get all vports directly from enterprise' + 20 * '=')
     stats_vports = stats_dom.vports.get()
     for vport in stats_vports:
         vport: vspk.NUVPort  # Type hinting
@@ -160,6 +161,7 @@ if __name__ == "__main__":
 
     ipdb.set_trace()
     # Now try to lookup necessary vport/vm interface using hierarchy
+    print(20 * '=' + 'Looking up vminf using filtering movinvg down the hierarchy ' + 20 * '=')
     # Get zone
     stats_zone: vspk.NUZone = stats_dom.zones.get_first(filter='name is "z1"')
     stats_zone.fetch()
@@ -186,10 +188,10 @@ if __name__ == "__main__":
     # stpol_s11.description = "My nice policy."
     # stpol_s11.data_collection_frequency = 5
     # stpol_s11.name = "Stats_policy_for_s11"
-    # stpol_s11.parent_types
-    # stats_sub_s11.create_child(stpol_s11)
+    # s11.create_child(stpol_s11)
 
     # Let see stats policy applied on the subnet
+    print(20 * '=' + 'STATISTICS policy' + 20 * '=')
     print("Get configures statistic collection policy object:")
     configured_sub_s11_spol: vspk.NUStatisticsPolicy = s11.statistics_policies.get_first()
     pprint("Object repr:")
@@ -213,19 +215,26 @@ if __name__ == "__main__":
     # Check if policy exists and apply new one if nothing there
     ret_val = None
     s21_spol = s21.statistics_policies.get_first()
-    if not s21_spol:
-        ret_val = s21.create_child(new_s21_spol)  # ret_val is tuple of created object and
-        # <bambou.nurest_connection.NURESTConnection object at 0x7fa019f0dc50>
-    else:
-        print("Overriding existing policy!")
-        pprint(s21_spol.delete())
-        ret_val = s21.create_child(new_s21_spol)
-
+    try:
+        if not s21_spol:
+            ret_val = s21.create_child(new_s21_spol)  # ret_val is tuple of created object and
+            # <bambou.nurest_connection.NURESTConnection object at 0x7fa019f0dc50>
+        else:
+            print("Overriding existing policy!")
+            pprint(s21_spol.delete())
+            ret_val = s21.create_child(new_s21_spol)
+    except bambou.exceptions.BambouHTTPError as err:
+        response = err.connection.response
+        if response.status_code == 409:
+            # The entity probably already exists, so we just ignore this error:
+            pass
+        else:
+            log_main.error("Failed to start session!")
+            # re-raise the exception
+            raise
     # Important! If you will create object with wrong parent you should see error 409
     # How to check correct parent
     pprint(ret_val[0].to_dict()["parentType"])
-
-
 
     # and update policy for s11 and save in VSD policy DB
     configured_sub_s11_spol.data_collection_frequency = 60
@@ -274,6 +283,7 @@ if __name__ == "__main__":
     ]
     ipdb.set_trace()
     # Extract statistics for interested vports
+    print(20 * '=' + 'vPort stats' + 20 * '=')
     for vport in [vm["vport"] for vm in my_vms.values()]:
         vport: vspk.NUVPort
         vport_subnet: vspk.NUSubnet = stats_dom.subnets.get_first(filter=f"ID == '{vport.parent_id}'")
@@ -291,12 +301,12 @@ if __name__ == "__main__":
         print("=== Stats data for the for the first 5 datapoints for each index ===")
         pprint([(st_type_type, p_stat.stats_data[st_type_type][0:5]) for st_type_type, st_type_data in p_stat.stats_data.items()])
 
-    # Extract CPU statistics for VSC
+    # Example for getting VSC metrics
     ipdb.set_trace()
-
+    print(20 * '=' + 'VSC metrics' + 20 * '=')
     vsd_sysmon: vspk.NUVSP = root.vsps.get_first()
     # For sake of simplicity we will take just first VSC
-    vsc_needed_stats_types: List[str] = [
+    vsc_stats_types: List[str] = [
         'CPU',
         'MEMORY',
     ]
@@ -305,9 +315,35 @@ if __name__ == "__main__":
             'startTime': ts_start,
             'endTime': ts_end,
             'numberOfDataPoints': 60,
-            'metricTypes': ','.join(vsc_needed_stats_types)
+            'metricTypes': ','.join(vsc_stats_types)
         })
     # pprint(cpu_stats.stats_data) # Full data
     pprint(slice_stats_data(cpu_stats))
+
+    ipdb.set_trace()
+    # ACL stats
+    print(20 * '=' + 'ACL policies' + 20 * '=')
+
+    acl_stats_types: List[str] = [
+        'INGRESS_PACKET_COUNT',
+        'EGRESS_PACKET_COUNT',
+        'INGRESS_BYTE_COUNT',
+        'EGRESS_BYTE_COUNT'
+    ]
+
+    for acl_template in stats_dom.ingress_acl_templates.get(filter='name == "ingress_policy_def"'):
+        print(f"ACL policy name: {acl_template.name}")
+        for acl_entry in acl_template.ingress_acl_entry_templates.get():
+            acl_entry: vspk.NUIngressACLEntryTemplate
+            pprint(acl_entry.to_dict())
+            if acl_entry.description == "allow-icmp-echo-z1-z2":
+                acl_entry_stats = acl_entry.statistics.get_first(query_parameters={
+                    'startTime': ts_start,
+                    'endTime': ts_end,
+                    'numberOfDataPoints': 60,
+                    'metricTypes': ','.join(acl_stats_types)
+                    })
+                pprint(slice_stats_data(acl_entry_stats))
+                # pprint(slice_stats_data(cpu_stats))
 
     api_session.requests_session.close()
