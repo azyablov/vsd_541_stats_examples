@@ -1,5 +1,6 @@
 import requests
 import json
+import sys
 import urllib3
 import base64
 import logging
@@ -11,6 +12,7 @@ import vspk.v5_0 as vspk
 import bambou
 from datetime import datetime, timedelta, timezone
 import ipdb
+import argparse
 
 # Disable exceptions related to incorrect SSL certificates
 urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -65,11 +67,20 @@ def base64_auth(login: str, secret: str) -> str:
 if __name__ == "__main__":
 
     # Below section to be replaced with argparse
-    ip = "172.17.10.129"
-    my_login = "csproot"
-    my_password = "csproot"
-    vsd_url = 'https://' + ip + ':8443'
 
+
+    argp_desc = sys.argv[0] + ' VSD stats demo'
+    parser = argparse.ArgumentParser(prog='stats', description=argp_desc)
+    parser.add_argument('--vsd', help='VSD IP/FQDN', action='store',
+                        required=True)
+    parser.add_argument('-p', help='password for csproot', action='store',
+                        required=True)
+    args = parser.parse_args()
+
+    vsd = args.vsd
+    my_login = "csproot"
+    my_password = args.p
+    vsd_url = 'https://' + vsd + ':8443'
     # Setting up main logger and logger for NuAPI
     log_main = logging.getLogger(__name__)
     fl_hdl = logging.FileHandler('log/' + __name__ + '.log', mode='w')
